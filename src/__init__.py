@@ -1,3 +1,37 @@
+from .activations import (
+    ACTIVATION_DERIVATIVES,
+    ACTIVATIONS,
+    get_activation,
+    get_activation_derivative,
+    linear,
+    linear_derivative,
+    relu,
+    relu_derivative,
+    sigmoid,
+    sigmoid_derivative,
+    softmax,
+    softmax_derivative,
+    softmax_derivative_vectorized,
+    tanh,
+    tanh_derivative,
+)
 from .ffnn import FFNN
 
-__all__ = ["FFNN"]
+__all__ = [
+    "FFNN",
+    "linear",
+    "linear_derivative",
+    "relu",
+    "relu_derivative",
+    "sigmoid",
+    "sigmoid_derivative",
+    "tanh",
+    "tanh_derivative",
+    "softmax",
+    "softmax_derivative",
+    "softmax_derivative_vectorized",
+    "get_activation",
+    "get_activation_derivative",
+    "ACTIVATIONS",
+    "ACTIVATION_DERIVATIVES",
+]
