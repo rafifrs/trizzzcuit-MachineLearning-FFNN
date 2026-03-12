@@ -1,5 +1,7 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from typing import List, Optional
+from activations import get_activation, ACTIVATION_DERIVATIVES
 
 
 class FFNN:
@@ -84,6 +86,77 @@ class FFNN:
             self.weights.append(rng.normal(mean, std, size=(fan_in, fan_out)))
             self.biases.append(np.zeros((1, fan_out)))
 
+
+    def forward(self, X: np.ndarray) -> np.ndarray:
+        # Menyimpan Z (hasil pre-activation, kombinasi linear) dan
+        # A (hasil post-activation) untuk setiap layer, termasuk input sebagai a[0].
+        self.z_list: List[np.ndarray] = []
+        self.a_list: List[np.ndarray] = [] 
+
+        a = X
+        self.a_list.append(a)
+
+        for i in range(self.num_layers - 1):
+            z = np.dot(a, self.weights[i]) + self.biases[i]
+            self.z_list.append(z)
+
+            net = get_activation(self.activations[i])
+            a = net(z)
+            self.a_list.append(a)
+
+        # yang di return adalah output layer terakhir, yaitu a_list[-1]
+        return a
+
+    def plot_weight_distribution(self, layers: Optional[List[int]] = None) -> None:
+
+        # plotting histogram bobot dan bias dari setiap layer 
+        if layers is None:
+            layers = list(range(len(self.weights)))
+
+        num_layers = len(layers)
+        fig, axes = plt.subplots(num_layers, 2, figsize=(12, 4 * num_layers), squeeze=False)
+        fig.suptitle("Distribusi Bobot dan Bias", fontsize=14)
+
+        for row, idx in enumerate(layers):
+            axes[row, 0].hist(self.weights[idx].flatten(), bins=30, edgecolor="black")
+            axes[row, 0].set_title(f"Layer {idx + 1} Bobot ({self.layer_sizes[idx]}->{self.layer_sizes[idx+1]})")
+            axes[row, 0].set_xlabel("Nilai")
+            axes[row, 0].set_ylabel("Frekuensi")
+
+            axes[row, 1].hist(self.biases[idx].flatten(), bins=30, edgecolor="black", color="orange")
+            axes[row, 1].set_title(f"Layer {idx + 1} Bias")
+            axes[row, 1].set_xlabel("Nilai")
+            axes[row, 1].set_ylabel("Frekuensi")
+
+        plt.tight_layout()
+        plt.show()
+
+    def plot_gradient_distribution(self, layers: Optional[List[int]] = None) -> None:
+        
+        # Plotting histogram gradien bobot dan bias dari setiap layer yang dipilih.
+        if not hasattr(self, "grad_weights") or not self.grad_weights:
+            raise RuntimeError("Gradien belum tersedia. Jalankan backward pass terlebih dahulu.")
+
+        if layers is None:
+            layers = list(range(len(self.grad_weights)))
+
+        num_layers = len(layers)
+        fig, axes = plt.subplots(num_layers, 2, figsize=(12, 4 * num_layers), squeeze=False)
+        fig.suptitle("Distribusi Gradien", fontsize=14)
+
+        for row, idx in enumerate(layers):
+            axes[row, 0].hist(self.grad_weights[idx].flatten(), bins=30, edgecolor="black")
+            axes[row, 0].set_title(f"Layer {idx + 1} Gradien Bobot")
+            axes[row, 0].set_xlabel("Nilai")
+            axes[row, 0].set_ylabel("Frekuensi")
+
+            axes[row, 1].hist(self.grad_biases[idx].flatten(), bins=30, edgecolor="black", color="orange")
+            axes[row, 1].set_title(f"Layer {idx + 1} Gradien Bias")
+            axes[row, 1].set_xlabel("Nilai")
+            axes[row, 1].set_ylabel("Frekuensi")
+
+        plt.tight_layout()
+        plt.show()
 
     def print_architecture(self) -> str:
         lines = ["FFNN Summary", "=" * 50]
