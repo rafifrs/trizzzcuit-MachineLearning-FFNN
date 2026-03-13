@@ -42,6 +42,8 @@ class FFNN:
 
         self.weights: List[np.ndarray] = []
         self.biases: List[np.ndarray] = []
+        self.grad_weights: List[np.ndarray] = []
+        self.grad_biases: List[np.ndarray] = []
 
         self._init_weights(weight_initial)
 
@@ -67,6 +69,8 @@ class FFNN:
             fan_out = self.layer_sizes[i + 1]
             self.weights.append(np.zeros((fan_in, fan_out)))
             self.biases.append(np.zeros((1, fan_out)))
+            self.grad_weights.append(np.zeros((fan_in, fan_out)))
+            self.grad_biases.append(np.zeros((1, fan_out)))
 
     def _init_uniform(self, lower: float, upper: float, seed: Optional[int]) -> None:
         rng = np.random.default_rng(seed)
@@ -75,6 +79,8 @@ class FFNN:
             fan_out = self.layer_sizes[i + 1]
             self.weights.append(rng.uniform(lower, upper, size=(fan_in, fan_out)))
             self.biases.append(np.zeros((1, fan_out)))
+            self.grad_weights.append(np.zeros((fan_in, fan_out)))
+            self.grad_biases.append(np.zeros((1, fan_out)))
 
     def _init_normal(self, mean: float, variance: float, seed: Optional[int]) -> None:
 
@@ -85,6 +91,8 @@ class FFNN:
             fan_out = self.layer_sizes[i + 1]
             self.weights.append(rng.normal(mean, std, size=(fan_in, fan_out)))
             self.biases.append(np.zeros((1, fan_out)))
+            self.grad_weights.append(np.zeros((fan_in, fan_out)))
+            self.grad_biases.append(np.zeros((1, fan_out)))
 
 
     def forward(self, X: np.ndarray) -> np.ndarray:
@@ -176,3 +184,33 @@ class FFNN:
         lines.append("=" * 50)
         lines.append(f"Total parameters: {total}")
         return "\n".join(lines)
+
+    def save(self, path: str) -> None:
+        
+        # Menyimpan arsitektur dan bobot model ke file .npz
+        save_dict = {
+            'layer_sizes': np.array(self.layer_sizes),
+            'activations': np.array(self.activations)
+        }
+        for i, w in enumerate(self.weights):
+            save_dict[f'W_{i}'] = w
+        for i, b in enumerate(self.biases):
+            save_dict[f'b_{i}'] = b
+            
+        np.savez(path, **save_dict)
+
+    @classmethod
+    def load(cls, path: str) -> 'FFNN':
+        
+        # Memuat arsitektur dan bobot model dari file .npz
+        data = np.load(path, allow_pickle=True)
+        layer_sizes = data['layer_sizes'].tolist()
+        activations = data['activations'].tolist()
+        
+        model = cls(layer_numbers_list=layer_sizes, activation_function_list=activations)
+        
+        num_layers = len(layer_sizes)
+        model.weights = [data[f'W_{i}'].copy() for i in range(num_layers - 1)]
+        model.biases = [data[f'b_{i}'].copy() for i in range(num_layers - 1)]
+        
+        return model
