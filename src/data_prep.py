@@ -15,16 +15,11 @@ def load_and_preprocess_data(filepath, test_size=0.2, random_state=42):
         
     data = np.array(data)
     
-    # Identify column indices
-    # cgpa(0), backlogs(1), college_tier(2), country(3), university_ranking_band(4),
-    # internship_count(5), aptitude_score(6), communication_score(7), specialization(8),
-    # industry(9), internship_quality_score(10), placement_status(11)
-    
     categorical_cols = [2, 3, 4, 8, 9]
     numerical_cols = [0, 1, 5, 6, 7, 10]
     target_col = 11
     
-    # Encode categorical features
+    # Encode categorical
     encoded_features = []
     for col_idx in categorical_cols:
         encoded, mapping = label_encode(data[:, col_idx])
@@ -32,7 +27,7 @@ def load_and_preprocess_data(filepath, test_size=0.2, random_state=42):
         
     encoded_features = np.column_stack(encoded_features)
     
-    # Parse numerical features
+    # Parse numerical
     numerical_features = data[:, numerical_cols].astype(float)
     
     # Combine features
@@ -44,7 +39,7 @@ def load_and_preprocess_data(filepath, test_size=0.2, random_state=42):
     # Normalize features (Standard Scaler)
     mean = np.mean(X, axis=0)
     std = np.std(X, axis=0)
-    std[std == 0] = 1 # prevent division by zero
+    std[std == 0] = 1
     X = (X - mean) / std
     
     # Train/Val split
