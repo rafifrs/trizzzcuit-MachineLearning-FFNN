@@ -174,6 +174,109 @@ class FFNN:
         reg_loss = compute_regularization_loss(self.weights, reg_type, lambda_)
         return data_loss + reg_loss
 
+    def _sgd_step(self, learning_rate: float) -> None:
+        for i in range(self.num_layers - 1):
+            self.weights[i] -= learning_rate * self.grad_weights[i]
+            self.biases[i] -= learning_rate * self.grad_biases[i]
+
+    def fit(
+        self,
+        X,
+        y,
+        X_val,
+        y_val,
+        batch_size,
+        learning_rate,
+        epochs,
+        verbose,
+        loss_type="mse",
+        reg_type=None,
+        lambda_=0.0,
+    ):
+        X = np.asarray(X)
+        y = np.asarray(y)
+        X_val = None if X_val is None else np.asarray(X_val)
+        y_val = None if y_val is None else np.asarray(y_val)
+
+        if X.shape[0] != y.shape[0]:
+            raise ValueError("Jumlah sample X dan y harus sama.")
+        if X_val is not None and y_val is not None and X_val.shape[0] != y_val.shape[0]:
+            raise ValueError("Jumlah sample X_val dan y_val harus sama.")
+        if batch_size <= 0:
+            raise ValueError("batch_size harus > 0.")
+        if epochs <= 0:
+            raise ValueError("epochs harus > 0.")
+        if verbose not in (0, 1):
+            raise ValueError("verbose hanya boleh 0 atau 1.")
+
+        num_samples = X.shape[0]
+        history = {"train_loss": [], "val_loss": []}
+
+        for epoch in range(epochs):
+            indices = np.random.permutation(num_samples)
+            X_shuffled = X[indices]
+            y_shuffled = y[indices]
+
+            for start_idx in range(0, num_samples, batch_size):
+                end_idx = min(start_idx + batch_size, num_samples)
+                X_batch = X_shuffled[start_idx:end_idx]
+                y_batch = y_shuffled[start_idx:end_idx]
+
+                y_pred_batch = self.forward(X_batch)
+                self.backward(
+                    y_true=y_batch,
+                    loss_type=loss_type,
+                    reg_type=reg_type,
+                    lambda_=lambda_,
+                )
+                self._sgd_step(learning_rate)
+
+            train_pred = self.forward(X)
+            train_loss = self.compute_loss(
+                y_true=y,
+                y_pred=train_pred,
+                loss_type=loss_type,
+                reg_type=reg_type,
+                lambda_=lambda_,
+            )
+
+            if X_val is not None and y_val is not None:
+                val_pred = self.forward(X_val)
+                val_loss = self.compute_loss(
+                    y_true=y_val,
+                    y_pred=val_pred,
+                    loss_type=loss_type,
+                    reg_type=reg_type,
+                    lambda_=lambda_,
+                )
+            else:
+                val_loss = np.nan
+
+            history["train_loss"].append(float(train_loss))
+            history["val_loss"].append(float(val_loss))
+
+            if verbose == 1:
+                progress = (epoch + 1) / epochs
+                bar_len = 30
+                filled = int(bar_len * progress)
+                bar = "#" * filled + "-" * (bar_len - filled)
+                if np.isnan(val_loss):
+                    msg = (
+                        f"\rEpoch {epoch + 1}/{epochs} [{bar}] "
+                        f"train_loss={train_loss:.6f}"
+                    )
+                else:
+                    msg = (
+                        f"\rEpoch {epoch + 1}/{epochs} [{bar}] "
+                        f"train_loss={train_loss:.6f} val_loss={val_loss:.6f}"
+                    )
+                print(msg, end="", flush=True)
+
+        if verbose == 1:
+            print()
+
+        return history
+
     def plot_weight_distribution(self, layers: Optional[List[int]] = None) -> None:
 
         # plotting histogram bobot dan bias dari setiap layer
