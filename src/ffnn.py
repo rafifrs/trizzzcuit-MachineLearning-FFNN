@@ -9,6 +9,7 @@ from activations import (
     softmax_derivative_vectorized,
 )
 from losses import MSE, BinaryCrossEntropy, CategoricalCrossEntropy
+from regularizers import compute_regularization_gradient, compute_regularization_loss
 
 
 class FFNN:
@@ -121,11 +122,10 @@ class FFNN:
 
         return a
 
-    def backward(self, y_true, loss_type="mse"):
+    def backward(self, y_true, loss_type="mse", reg_type=None, lambda_=0.0):
         y_pred = self.a_list[-1]
 
         # Get dL/da for output layer based on loss type
-        # Note: loss backward already normalizes by batch size
         if loss_type == "mse":
             dL_da = MSE.backward(y_true, y_pred)
         elif loss_type == "binary_crossentropy":
@@ -134,6 +134,9 @@ class FFNN:
             dL_da = CategoricalCrossEntropy.backward(y_true, y_pred)
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
+
+        # Compute regularization gradients
+        reg_grads = compute_regularization_gradient(self.weights, reg_type, lambda_)
 
         # Backprop through layers (from last to first)
         for i in reversed(range(self.num_layers - 1)):
@@ -148,8 +151,8 @@ class FFNN:
                 activation_deriv = get_activation_derivative(activation_name)
                 delta = dL_da * activation_deriv(z)
 
-            # Compute gradients for weights and biases
-            self.grad_weights[i] = a_prev.T @ delta
+            # Compute gradients for weights and biases (add regularization to weights)
+            self.grad_weights[i] = a_prev.T @ delta + reg_grads[i]
             self.grad_biases[i] = np.sum(delta, axis=0, keepdims=True)
 
             # Propagate gradient to previous layer
@@ -157,6 +160,19 @@ class FFNN:
                 dL_da = delta @ self.weights[i].T
 
         return self.grad_weights, self.grad_biases
+
+    def compute_loss(self, y_true, y_pred, loss_type="mse", reg_type=None, lambda_=0.0):
+        if loss_type == "mse":
+            data_loss = MSE.forward(y_true, y_pred)
+        elif loss_type == "binary_crossentropy":
+            data_loss = BinaryCrossEntropy.forward(y_true, y_pred)
+        elif loss_type == "categorical_crossentropy":
+            data_loss = CategoricalCrossEntropy.forward(y_true, y_pred)
+        else:
+            raise ValueError(f"Unknown loss type: {loss_type}")
+
+        reg_loss = compute_regularization_loss(self.weights, reg_type, lambda_)
+        return data_loss + reg_loss
 
     def plot_weight_distribution(self, layers: Optional[List[int]] = None) -> None:
 
