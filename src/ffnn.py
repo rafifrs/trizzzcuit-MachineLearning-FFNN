@@ -15,7 +15,7 @@ from normalizers import rmsnorm_backward, rmsnorm_forward
 
 class FFNN:
     VALID_ACTIVATIONS = {"linear", "relu", "leaky_relu", "sigmoid", "tanh", "swish", "softmax"}
-    VALID_INIT_METHODS = {"zero", "uniform", "normal"}
+    VALID_INIT_METHODS = {"zero", "uniform", "normal", "xavier", "he"}
 
     def __init__(
         self,
@@ -78,6 +78,10 @@ class FFNN:
                 variance=1.0,
                 seed=None,
             )
+        elif method == "xavier":
+            self._init_xavier(seed=None)
+        elif method == "he":
+            self._init_he(seed=None)
 
     def _init_zero(self) -> None:
         for i in range(self.num_layers - 1):
@@ -112,6 +116,34 @@ class FFNN:
             fan_in = self.layer_sizes[i]
             fan_out = self.layer_sizes[i + 1]
             self.weights.append(rng.normal(mean, std, size=(fan_in, fan_out)))
+            self.biases.append(np.zeros((1, fan_out)))
+            self.grad_weights.append(np.zeros((fan_in, fan_out)))
+            self.grad_biases.append(np.zeros((1, fan_out)))
+            if self.use_rmsnorm:
+                self.rms_gamma.append(np.ones((1, fan_out)))
+                self.grad_rms_gamma.append(np.zeros((1, fan_out)))
+
+    def _init_xavier(self, seed: Optional[int]) -> None:
+        rng = np.random.default_rng(seed)
+        for i in range(self.num_layers - 1):
+            fan_in = self.layer_sizes[i]
+            fan_out = self.layer_sizes[i + 1]
+            limit = np.sqrt(6.0 / (fan_in + fan_out))
+            self.weights.append(rng.uniform(-limit, limit, size=(fan_in, fan_out)))
+            self.biases.append(np.zeros((1, fan_out)))
+            self.grad_weights.append(np.zeros((fan_in, fan_out)))
+            self.grad_biases.append(np.zeros((1, fan_out)))
+            if self.use_rmsnorm:
+                self.rms_gamma.append(np.ones((1, fan_out)))
+                self.grad_rms_gamma.append(np.zeros((1, fan_out)))
+
+    def _init_he(self, seed: Optional[int]) -> None:
+        rng = np.random.default_rng(seed)
+        for i in range(self.num_layers - 1):
+            fan_in = self.layer_sizes[i]
+            fan_out = self.layer_sizes[i + 1]
+            std = np.sqrt(2.0 / fan_in)
+            self.weights.append(rng.normal(0.0, std, size=(fan_in, fan_out)))
             self.biases.append(np.zeros((1, fan_out)))
             self.grad_weights.append(np.zeros((fan_in, fan_out)))
             self.grad_biases.append(np.zeros((1, fan_out)))
