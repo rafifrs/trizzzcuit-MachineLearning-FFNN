@@ -10,6 +10,7 @@ from activations import (
 )
 from losses import MSE, BinaryCrossEntropy, CategoricalCrossEntropy
 from regularizers import compute_regularization_gradient, compute_regularization_loss
+from normalizers import rmsnorm_backward, rmsnorm_forward
 
 
 class FFNN:
@@ -27,6 +28,8 @@ class FFNN:
         # - zero: semua bobot jadi nol
         # - uniform: bobot jadi distribusi uniform
         # - normal: bobot jadi distribusi normal
+        use_rmsnorm: bool = False,
+        rmsnorm_eps: float = 1e-8,
     ):
 
         if len(layer_numbers_list) < 2:
@@ -48,11 +51,15 @@ class FFNN:
         self.layer_sizes = layer_numbers_list
         self.activations = activation_function_list
         self.num_layers = len(layer_numbers_list)
+        self.use_rmsnorm = use_rmsnorm
+        self.rmsnorm_eps = rmsnorm_eps
 
         self.weights: List[np.ndarray] = []
         self.biases: List[np.ndarray] = []
         self.grad_weights: List[np.ndarray] = []
         self.grad_biases: List[np.ndarray] = []
+        self.rms_gamma: List[np.ndarray] = []
+        self.grad_rms_gamma: List[np.ndarray] = []
 
         self._init_weights(weight_initial)
 
@@ -80,6 +87,9 @@ class FFNN:
             self.biases.append(np.zeros((1, fan_out)))
             self.grad_weights.append(np.zeros((fan_in, fan_out)))
             self.grad_biases.append(np.zeros((1, fan_out)))
+            if self.use_rmsnorm:
+                self.rms_gamma.append(np.ones((1, fan_out)))
+                self.grad_rms_gamma.append(np.zeros((1, fan_out)))
 
     def _init_uniform(self, lower: float, upper: float, seed: Optional[int]) -> None:
         rng = np.random.default_rng(seed)
@@ -90,6 +100,9 @@ class FFNN:
             self.biases.append(np.zeros((1, fan_out)))
             self.grad_weights.append(np.zeros((fan_in, fan_out)))
             self.grad_biases.append(np.zeros((1, fan_out)))
+            if self.use_rmsnorm:
+                self.rms_gamma.append(np.ones((1, fan_out)))
+                self.grad_rms_gamma.append(np.zeros((1, fan_out)))
 
     def _init_normal(self, mean: float, variance: float, seed: Optional[int]) -> None:
 
@@ -102,11 +115,15 @@ class FFNN:
             self.biases.append(np.zeros((1, fan_out)))
             self.grad_weights.append(np.zeros((fan_in, fan_out)))
             self.grad_biases.append(np.zeros((1, fan_out)))
+            if self.use_rmsnorm:
+                self.rms_gamma.append(np.ones((1, fan_out)))
+                self.grad_rms_gamma.append(np.zeros((1, fan_out)))
 
     def forward(self, X: np.ndarray) -> np.ndarray:
         # Menyimpan Z (hasil pre-activation, kombinasi linear) dan
         # A (hasil post-activation) untuk setiap layer, termasuk input sebagai a[0].
         self.z_list: List[np.ndarray] = []
+        self.z_pre_norm_list: List[np.ndarray] = []
         self.a_list: List[np.ndarray] = []
 
         a = X
@@ -114,6 +131,9 @@ class FFNN:
 
         for i in range(self.num_layers - 1):
             z = np.dot(a, self.weights[i]) + self.biases[i]
+            self.z_pre_norm_list.append(z)
+            if self.use_rmsnorm:
+                z = rmsnorm_forward(z, self.rms_gamma[i], eps=self.rmsnorm_eps)
             self.z_list.append(z)
 
             activation_fn = get_activation(self.activations[i])
@@ -141,6 +161,7 @@ class FFNN:
         # Backprop through layers (from last to first)
         for i in reversed(range(self.num_layers - 1)):
             z = self.z_list[i]
+            z_pre = self.z_pre_norm_list[i]
             a_prev = self.a_list[i]
             activation_name = self.activations[i]
 
@@ -150,6 +171,13 @@ class FFNN:
             else:
                 activation_deriv = get_activation_derivative(activation_name)
                 delta = dL_da * activation_deriv(z)
+
+            # If RMSNorm enabled, backprop before weight/bias gradients
+            if self.use_rmsnorm:
+                delta, dgamma = rmsnorm_backward(
+                    delta, z_pre, self.rms_gamma[i], eps=self.rmsnorm_eps
+                )
+                self.grad_rms_gamma[i] = dgamma
 
             # Compute gradients for weights and biases (add regularization to weights)
             self.grad_weights[i] = a_prev.T @ delta + reg_grads[i]
@@ -178,6 +206,8 @@ class FFNN:
         for i in range(self.num_layers - 1):
             self.weights[i] -= learning_rate * self.grad_weights[i]
             self.biases[i] -= learning_rate * self.grad_biases[i]
+            if self.use_rmsnorm:
+                self.rms_gamma[i] -= learning_rate * self.grad_rms_gamma[i]
 
     def fit(
         self,
@@ -370,11 +400,16 @@ class FFNN:
         save_dict = {
             "layer_sizes": np.array(self.layer_sizes),
             "activations": np.array(self.activations),
+            "use_rmsnorm": np.array(self.use_rmsnorm),
+            "rmsnorm_eps": np.array(self.rmsnorm_eps),
         }
         for i, w in enumerate(self.weights):
             save_dict[f"W_{i}"] = w
         for i, b in enumerate(self.biases):
             save_dict[f"b_{i}"] = b
+        if self.use_rmsnorm:
+            for i, g in enumerate(self.rms_gamma):
+                save_dict[f"g_{i}"] = g
 
         np.savez(path, **save_dict)
 
@@ -385,13 +420,21 @@ class FFNN:
         data = np.load(path, allow_pickle=True)
         layer_sizes = data["layer_sizes"].tolist()
         activations = data["activations"].tolist()
+        use_rmsnorm = bool(data.get("use_rmsnorm", False))
+        rmsnorm_eps = float(data.get("rmsnorm_eps", 1e-8))
 
         model = cls(
-            layer_numbers_list=layer_sizes, activation_function_list=activations
+            layer_numbers_list=layer_sizes,
+            activation_function_list=activations,
+            use_rmsnorm=use_rmsnorm,
+            rmsnorm_eps=rmsnorm_eps,
         )
 
         num_layers = len(layer_sizes)
         model.weights = [data[f"W_{i}"].copy() for i in range(num_layers - 1)]
         model.biases = [data[f"b_{i}"].copy() for i in range(num_layers - 1)]
+        if model.use_rmsnorm:
+            model.rms_gamma = [data[f"g_{i}"].copy() for i in range(num_layers - 1)]
+            model.grad_rms_gamma = [np.zeros_like(g) for g in model.rms_gamma]
 
         return model
