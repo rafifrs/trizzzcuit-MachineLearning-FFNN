@@ -13,7 +13,7 @@ from regularizers import compute_regularization_gradient, compute_regularization
 
 
 class FFNN:
-    VALID_ACTIVATIONS = {"linear", "relu", "sigmoid", "tanh", "softmax"}
+    VALID_ACTIVATIONS = {"linear", "relu", "leaky_relu", "sigmoid", "tanh", "swish", "softmax"}
     VALID_INIT_METHODS = {"zero", "uniform", "normal"}
 
     def __init__(

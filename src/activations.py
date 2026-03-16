@@ -19,6 +19,14 @@ def relu_derivative(z):
     return (z > 0).astype(z.dtype)
 
 
+def leaky_relu(z, alpha=0.01):
+    return np.where(z > 0, z, alpha * z)
+
+
+def leaky_relu_derivative(z, alpha=0.01):
+    return np.where(z > 0, 1.0, alpha).astype(z.dtype)
+
+
 def sigmoid(z):
     result = np.zeros_like(z, dtype=np.float64)
     pos = z >= 0
@@ -40,6 +48,15 @@ def tanh(z):
 
 def tanh_derivative(z):
     return 1 - np.tanh(z) ** 2
+
+
+def swish(z):
+    return z * sigmoid(z)
+
+
+def swish_derivative(z):
+    s = sigmoid(z)
+    return s + z * s * (1.0 - s)
 
 
 def softmax(z):
@@ -75,16 +92,20 @@ def softmax_derivative_vectorized(z, upstream_gradient):
 ACTIVATIONS = {
     "linear": linear,
     "relu": relu,
+    "leaky_relu": leaky_relu,
     "sigmoid": sigmoid,
     "tanh": tanh,
+    "swish": swish,
     "softmax": softmax,
 }
 
 ACTIVATION_DERIVATIVES = {
     "linear": linear_derivative,
     "relu": relu_derivative,
+    "leaky_relu": leaky_relu_derivative,
     "sigmoid": sigmoid_derivative,
     "tanh": tanh_derivative,
+    "swish": swish_derivative,
     "softmax": softmax_derivative,
 }
 
