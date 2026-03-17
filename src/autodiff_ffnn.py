@@ -77,10 +77,11 @@ class AutodiffFFNN:
         self, y_true: List[float], y_pred: List[Value]
     ) -> Value:
         assert len(y_true) == len(y_pred)
+        n = len(y_true)
         loss = Value(0.0)
-        for i in range(len(y_true)):
+        for i in range(n):
             loss = loss + (Value(-1.0) * Value(y_true[i]) * y_pred[i].log())
-        return loss
+        return loss * (1.0 / n)
 
     def set_params(self, weights, biases) -> None:
         for i in range(len(self.weights)):
