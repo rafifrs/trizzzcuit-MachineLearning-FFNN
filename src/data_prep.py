@@ -36,22 +36,23 @@ def load_and_preprocess_data(filepath, test_size=0.2, random_state=42):
     # Encode Target
     y, y_mapping = label_encode(data[:, target_col])
     
-    # Normalize features (Standard Scaler)
-    mean = np.mean(X, axis=0)
-    std = np.std(X, axis=0)
-    std[std == 0] = 1
-    X = (X - mean) / std
-    
-    # Train/Val split
+    # Train/Val split (before normalization to avoid data leakage)
     np.random.seed(random_state)
     indices = np.arange(X.shape[0])
     np.random.shuffle(indices)
-    
+
     split_idx = int(X.shape[0] * (1 - test_size))
     train_idx, val_idx = indices[:split_idx], indices[split_idx:]
-    
+
     X_train, X_val = X[train_idx], X[val_idx]
     y_train, y_val = y[train_idx], y[val_idx]
+
+    # Standard Scaler
+    mean = np.mean(X_train, axis=0)
+    std = np.std(X_train, axis=0)
+    std[std == 0] = 1
+    X_train = (X_train - mean) / std
+    X_val = (X_val - mean) / std
     
     return X_train, y_train, X_val, y_val
 
