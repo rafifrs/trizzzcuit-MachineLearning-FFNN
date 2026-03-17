@@ -60,6 +60,13 @@ class FFNN:
         self.grad_biases: List[np.ndarray] = []
         self.rms_gamma: List[np.ndarray] = []
         self.grad_rms_gamma: List[np.ndarray] = []
+        self._adam_t = 0
+        self._adam_m_w: List[np.ndarray] = []
+        self._adam_v_w: List[np.ndarray] = []
+        self._adam_m_b: List[np.ndarray] = []
+        self._adam_v_b: List[np.ndarray] = []
+        self._adam_m_g: List[np.ndarray] = []
+        self._adam_v_g: List[np.ndarray] = []
 
         self._init_weights(weight_initial)
 
@@ -241,6 +248,54 @@ class FFNN:
             if self.use_rmsnorm:
                 self.rms_gamma[i] -= learning_rate * self.grad_rms_gamma[i]
 
+    def _reset_adam_states(self) -> None:
+        self._adam_t = 0
+        self._adam_m_w = [np.zeros_like(w) for w in self.weights]
+        self._adam_v_w = [np.zeros_like(w) for w in self.weights]
+        self._adam_m_b = [np.zeros_like(b) for b in self.biases]
+        self._adam_v_b = [np.zeros_like(b) for b in self.biases]
+        if self.use_rmsnorm:
+            self._adam_m_g = [np.zeros_like(g) for g in self.rms_gamma]
+            self._adam_v_g = [np.zeros_like(g) for g in self.rms_gamma]
+        else:
+            self._adam_m_g = []
+            self._adam_v_g = []
+
+    def _adam_step(
+        self,
+        learning_rate: float,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        eps: float = 1e-8,
+    ) -> None:
+        self._adam_t += 1
+        t = self._adam_t
+
+        for i in range(self.num_layers - 1):
+            g_w = self.grad_weights[i]
+            g_b = self.grad_biases[i]
+
+            self._adam_m_w[i] = beta1 * self._adam_m_w[i] + (1.0 - beta1) * g_w
+            self._adam_v_w[i] = beta2 * self._adam_v_w[i] + (1.0 - beta2) * (g_w ** 2)
+            self._adam_m_b[i] = beta1 * self._adam_m_b[i] + (1.0 - beta1) * g_b
+            self._adam_v_b[i] = beta2 * self._adam_v_b[i] + (1.0 - beta2) * (g_b ** 2)
+
+            m_hat_w = self._adam_m_w[i] / (1.0 - beta1 ** t)
+            v_hat_w = self._adam_v_w[i] / (1.0 - beta2 ** t)
+            m_hat_b = self._adam_m_b[i] / (1.0 - beta1 ** t)
+            v_hat_b = self._adam_v_b[i] / (1.0 - beta2 ** t)
+
+            self.weights[i] -= learning_rate * m_hat_w / (np.sqrt(v_hat_w) + eps)
+            self.biases[i] -= learning_rate * m_hat_b / (np.sqrt(v_hat_b) + eps)
+
+            if self.use_rmsnorm:
+                g_g = self.grad_rms_gamma[i]
+                self._adam_m_g[i] = beta1 * self._adam_m_g[i] + (1.0 - beta1) * g_g
+                self._adam_v_g[i] = beta2 * self._adam_v_g[i] + (1.0 - beta2) * (g_g ** 2)
+                m_hat_g = self._adam_m_g[i] / (1.0 - beta1 ** t)
+                v_hat_g = self._adam_v_g[i] / (1.0 - beta2 ** t)
+                self.rms_gamma[i] -= learning_rate * m_hat_g / (np.sqrt(v_hat_g) + eps)
+
     def fit(
         self,
         X,
@@ -254,6 +309,10 @@ class FFNN:
         loss_type="mse",
         reg_type=None,
         lambda_=0.0,
+        optimizer="sgd",
+        beta1=0.9,
+        beta2=0.999,
+        adam_eps=1e-8,
     ):
         X = np.asarray(X)
         y = np.asarray(y)
@@ -270,9 +329,17 @@ class FFNN:
             raise ValueError("epochs harus > 0.")
         if verbose not in (0, 1):
             raise ValueError("verbose hanya boleh 0 atau 1.")
+        if optimizer not in ("sgd", "adam"):
+            raise ValueError("optimizer hanya boleh 'sgd' atau 'adam'.")
+        if not (0.0 < beta1 < 1.0 and 0.0 < beta2 < 1.0):
+            raise ValueError("beta1 dan beta2 harus di rentang (0, 1).")
+        if adam_eps <= 0:
+            raise ValueError("adam_eps harus > 0.")
 
         num_samples = X.shape[0]
         history = {"train_loss": [], "val_loss": []}
+        if optimizer == "adam":
+            self._reset_adam_states()
 
         for epoch in range(epochs):
             indices = np.random.permutation(num_samples)
@@ -284,14 +351,22 @@ class FFNN:
                 X_batch = X_shuffled[start_idx:end_idx]
                 y_batch = y_shuffled[start_idx:end_idx]
 
-                y_pred_batch = self.forward(X_batch)
+                self.forward(X_batch)
                 self.backward(
                     y_true=y_batch,
                     loss_type=loss_type,
                     reg_type=reg_type,
                     lambda_=lambda_,
                 )
-                self._sgd_step(learning_rate)
+                if optimizer == "adam":
+                    self._adam_step(
+                        learning_rate=learning_rate,
+                        beta1=beta1,
+                        beta2=beta2,
+                        eps=adam_eps,
+                    )
+                else:
+                    self._sgd_step(learning_rate)
 
             train_pred = self.forward(X)
             train_loss = self.compute_loss(
