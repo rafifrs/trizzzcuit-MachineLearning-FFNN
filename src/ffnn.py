@@ -184,7 +184,7 @@ class FFNN:
     def backward(self, y_true, loss_type="mse", reg_type=None, lambda_=0.0):
         y_pred = self.a_list[-1]
 
-        # Get dL/da for output layer based on loss type
+        # Ambil dL/da untuk layer output berdasarkan jenis loss
         if loss_type == "mse":
             dL_da = MSE.backward(y_true, y_pred)
         elif loss_type == "binary_crossentropy":
@@ -194,35 +194,35 @@ class FFNN:
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
 
-        # Compute regularization gradients
+        # Hitung gradien regularisasi
         reg_grads = compute_regularization_gradient(self.weights, reg_type, lambda_)
 
-        # Backprop through layers (from last to first)
+        # Lakukan backprop per layer (dari layer terakhir ke pertama)
         for i in reversed(range(self.num_layers - 1)):
             z = self.z_list[i]
             z_pre = self.z_pre_norm_list[i]
             a_prev = self.a_list[i]
             activation_name = self.activations[i]
 
-            # Compute delta = dL/dz
+            # Hitung delta = dL/dz
             if activation_name == "softmax":
                 delta = softmax_derivative_vectorized(z, dL_da)
             else:
                 activation_deriv = get_activation_derivative(activation_name)
                 delta = dL_da * activation_deriv(z)
 
-            # If RMSNorm enabled, backprop before weight/bias gradients
+            # Kalau RMSNorm aktif, lakukan backprop RMSNorm sebelum gradien bobot/bias
             if self.use_rmsnorm:
                 delta, dgamma = rmsnorm_backward(
                     delta, z_pre, self.rms_gamma[i], eps=self.rmsnorm_eps
                 )
                 self.grad_rms_gamma[i] = dgamma
 
-            # Compute gradients for weights and biases (add regularization to weights)
+            # Hitung gradien bobot dan bias (tambahkan regularisasi ke gradien bobot)
             self.grad_weights[i] = a_prev.T @ delta + reg_grads[i]
             self.grad_biases[i] = np.sum(delta, axis=0, keepdims=True)
 
-            # Propagate gradient to previous layer
+            # Propagasikan gradien ke layer sebelumnya
             if i > 0:
                 dL_da = delta @ self.weights[i].T
 
